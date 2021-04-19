@@ -10,6 +10,10 @@ input images.
 */
 package main
 
+// todo:
+// * all manner of stats on layers (hogs, avgs etc)
+// * spike raster on IT
+
 import (
 	"bytes"
 	"flag"
@@ -72,38 +76,47 @@ var ParamSets = params.Sets{
 		"Network": &params.Sheet{
 			{Sel: "Prjn", Desc: "yes extra learning factors",
 				Params: params.Params{
-					"Prjn.Learn.Norm.On":     "false",
+					"Prjn.Learn.Norm.On":     "false", // retest: off > on actually -- dies in the end maybe..
 					"Prjn.Learn.Momentum.On": "false",
-					"Prjn.Learn.WtBal.On":    "true", // not obviously beneficial, maybe worse
+					"Prjn.Learn.WtBal.On":    "true", // if mom, then need wtbal!
 					"Prjn.Learn.Lrate":       "0.04", // must set initial lrate here when using schedule!
 					// "Prjn.WtInit.Sym":        "false", // slows first couple of epochs but then no diff
 				}},
 			{Sel: "Layer", Desc: "needs some special inhibition and learning params",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":      "1.0",
-					"Layer.Act.Init.Decay":      "0.5",  // 0.5 > 1 > 0
-					"Layer.Act.Gbar.L":          "0.1",  // .1 > .2
-					"Layer.Act.Gbar.E":          "1.0",  // 1.2 maybe better % cor but not cosdiff
-					"Layer.Act.NMDA.Gbar":       "0.03", // 0.03 > .04 > .02
-					"Layer.Act.NMDA.Tau":        "100",  // 50 no diff
-					"Layer.Act.GABAB.Gbar":      "0.2",  // .1 == .2 pretty much
-					"Layer.Act.GABAB.Gbase":     "0.2",  // .1 == .2
-					"Layer.Act.GABAB.Smult":     "10",   // 10 > 8 > 15
-					"Layer.Learn.ActAvg.SpikeG": "8",
-					"Layer.Learn.ActAvg.SSTau":  "35",   // 4 > 2 for 50 cyc qtr
-					"Layer.Learn.ActAvg.STau":   "8",    //
-					"Layer.Learn.ActAvg.MTau":   "40",   // for 50 cyc qtr, SS = 4, 40 > 50 > 30
-					"Layer.Act.Dt.MTau":         "20",   // for 50 cyc qtr, 20 > 10
-					"Layer.Act.KNa.On":          "true", // on > off
+					"Layer.Inhib.Layer.Gi":    "1.0",
+					"Layer.Inhib.Layer.FBTau": "1.4", // 1.4 def
+					"Layer.Inhib.Pool.FBTau":  "1.4",
+					"Layer.Act.Init.Decay":    "0.5",  // 0.5 > 0.8 > 1 > 0 -- 1, 0.8 start fast then dies, 0 never learns -- very sensitive
+					"Layer.Act.Gbar.L":        "0.2",  // .2 > .1 -- .1 starts out better then loses
+					"Layer.Act.Gbar.E":        "1.0",  // 1.2 maybe better % cor but not cosdiff
+					"Layer.Act.NMDA.Gbar":     "0.03", // 0.03 > .04 (faster initially then dies) > .02 -- massive effects for .02
+					"Layer.Act.NMDA.Tau":      "100",  // 50 no diff
+					"Layer.Act.GABAB.Gbar":    "0.2",  // .1 == .2 pretty much
+					"Layer.Act.GABAB.Gbase":   "0.2",  // .1 == .2
+					// "Layer.Act.GABAB.GiSpike":   "10",   // 10 -- no diff 8,12 > 8 > 15
+					"Layer.Act.Spike.Exp":       "true",
+					"Layer.Learn.ActAvg.SpikeG": "8",    // 8 for sure..
+					"Layer.Learn.ActAvg.SSTau":  "40",   // 40 > 35 def > 30
+					"Layer.Learn.ActAvg.STau":   "10",   // 10 >= 8 def (10 better early) > 6
+					"Layer.Learn.ActAvg.MTau":   "40",   // for 50 cyc qtr: SS = 40, 50, 45 faster then die
+					"Layer.Act.Dt.GeTau":        "5",    // 5 > 7 initially faster then dies
+					"Layer.Act.Dt.MTau":         "20",   // for 50 cyc qtr, 20 -- no maj diffs +-5 > 10
+					"Layer.Act.KNa.On":          "true", // on > off -- off starts faster then loses badly
 					"Layer.Act.Noise.Dist":      "Gaussian",
 					"Layer.Act.Noise.Var":       "0.0",     // 0.01 > 0.005 > 0.02
-					"Layer.Act.Noise.Type":      "NoNoise", // now, no noise is better
-					"Layer.Act.Clamp.Rate":      "120",
-					"Layer.Learn.AvgL.Gain":     "2.5", // standard
+					"Layer.Act.Noise.Type":      "NoNoise", // no diff -- maybe tiny bit better
+					"Layer.Act.Clamp.Rate":      "180",     // 180 == 200 > 150 > 120 > 100 -- major effect on 100, 120
+					"Layer.Act.Clamp.ErrThr":    "0.5",     // 0.5 best
+					"Layer.Learn.AvgL.Gain":     "2.5",     // 2.5 def == 2.0, 3.0
 				}},
 			{Sel: ".Back", Desc: "top-down back-projections MUST have lower relative weight scale, otherwise network hallucinates -- smaller as network gets bigger",
 				Params: params.Params{
 					"Prjn.WtScale.Rel": "0.1",
+				}},
+			{Sel: ".Forward", Desc: "special forward-only params: com prob",
+				Params: params.Params{
+					"Prjn.Com.PFail": "0.0", // 0.5 fails badly!
 				}},
 			{Sel: "#V1", Desc: "pool inhib (not used), initial activity",
 				Params: params.Params{
@@ -112,19 +125,19 @@ var ParamSets = params.Sets{
 				}},
 			{Sel: "#V4", Desc: "pool inhib, sparse activity",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "0.9",
-					"Layer.Inhib.Pool.Gi":     "0.9",
+					"Layer.Inhib.Layer.Gi":    "1.0",  // 1.0 == 0.9 == 0.8 > 0.7
+					"Layer.Inhib.Pool.Gi":     "1.0",  // 1.0 == 0.9 > 0.8..
 					"Layer.Inhib.Pool.On":     "true", // needs pool-level
 					"Layer.Inhib.ActAvg.Init": "0.05", // sparse
 				}},
 			{Sel: "#IT", Desc: "initial activity",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "1.1", // 1.1 good, 1.2 fails
+					"Layer.Inhib.Layer.Gi":    "1.1", // 1.1 > 1.0, 1.2 (1.2 pretty close)
 					"Layer.Inhib.ActAvg.Init": "0.1",
 				}},
 			{Sel: "#Output", Desc: "high inhib for one-hot output",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "1.4", // 1.4 > 1.3
+					"Layer.Inhib.Layer.Gi":    "1.5", // 1.5 >= 1.4 >= 1.3 > 1.2
 					"Layer.Inhib.ActAvg.Init": "0.05",
 					"Layer.Act.Init.Decay":    "1.0",
 				}},
@@ -313,8 +326,8 @@ func (ss *Sim) ConfigEnv() {
 func (ss *Sim) ConfigNet(net *axon.Network) {
 	net.InitName(net, "Objrec")
 	v1 := net.AddLayer4D("V1", 10, 10, 5, 4, emer.Input)
-	v4 := net.AddLayer4D("V4", 5, 5, 7, 7, emer.Hidden)
-	it := net.AddLayer2D("IT", 10, 10, emer.Hidden)
+	v4 := net.AddLayer4D("V4", 5, 5, 10, 10, emer.Hidden) // 10x10 == 16x16 > 7x7
+	it := net.AddLayer2D("IT", 16, 16, emer.Hidden)       // 16x16 == 20x20 > 10x10  (both IT, V4 matter)
 	out := net.AddLayer2D("Output", 4, 5, emer.Target)
 
 	net.ConnectLayers(v1, v4, ss.V1V4Prjn, emer.Forward)
@@ -645,9 +658,12 @@ func (ss *Sim) SaveWeights(filename gi.FileName) {
 // LrateSched implements the learning rate schedule
 func (ss *Sim) LrateSched(epc int) {
 	switch epc {
-	case 40:
+	case 90:
 		ss.Net.LrateMult(0.5)
 		fmt.Printf("dropped lrate 0.5 at epoch: %d\n", epc)
+	case 150:
+		ss.Net.LrateMult(0.2)
+		fmt.Printf("dropped lrate 0.2 at epoch: %d\n", epc)
 	}
 }
 
@@ -1497,6 +1513,7 @@ func (ss *Sim) CmdArgs() {
 	flag.StringVar(&ss.Tag, "tag", "", "extra tag to add to file names saved from this run")
 	flag.StringVar(&note, "note", "", "user note -- describe the run params etc")
 	flag.IntVar(&ss.MaxRuns, "runs", 1, "number of runs to do (note that MaxEpcs is in paramset)")
+	flag.IntVar(&ss.MaxEpcs, "epcs", 100, "number of epochs per run")
 	flag.BoolVar(&ss.LogSetParams, "setparams", false, "if true, print a record of each parameter that is set")
 	flag.BoolVar(&ss.SaveWts, "wts", false, "if true, save final weights after each run")
 	flag.BoolVar(&saveEpcLog, "epclog", true, "if true, save train epoch log to file")
