@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
@@ -84,16 +85,18 @@ var ParamSets = params.Sets{
 				}},
 			{Sel: "Layer", Desc: "needs some special inhibition and learning params",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "1.0",
-					"Layer.Inhib.Layer.FBTau": "1.4", // 1.4 def
-					"Layer.Inhib.Pool.FBTau":  "1.4",
-					"Layer.Act.Init.Decay":    "0.5",  // 0.5 > 0.8 > 1 > 0 -- 1, 0.8 start fast then dies, 0 never learns -- very sensitive
-					"Layer.Act.Gbar.L":        "0.2",  // .2 > .1 -- .1 starts out better then loses
-					"Layer.Act.Gbar.E":        "1.0",  // 1.2 maybe better % cor but not cosdiff
-					"Layer.Act.NMDA.Gbar":     "0.03", // 0.03 > .04 (faster initially then dies) > .02 -- massive effects for .02
-					"Layer.Act.NMDA.Tau":      "100",  // 50 no diff
-					"Layer.Act.GABAB.Gbar":    "0.2",  // .1 == .2 pretty much
-					"Layer.Act.GABAB.Gbase":   "0.2",  // .1 == .2
+					"Layer.Inhib.Layer.Gi":     "1.0",
+					"Layer.Inhib.Layer.FBTau":  "1.4", // 1.4 def
+					"Layer.Inhib.Pool.FBTau":   "1.4",
+					"Layer.Act.Init.Decay":     "0.5",  // 0.5 > 0.8 > 1 > 0 -- 1, 0.8 start fast then dies, 0 never learns -- very sensitive
+					"Layer.Act.Gbar.L":         "0.2",  // .2 > .1 -- .1 starts out better then loses
+					"Layer.Act.Gbar.E":         "1.0",  // 1.2 maybe better % cor but not cosdiff
+					"Layer.Act.NMDA.Gbar":      "0.03", // 0.03 > .04 (faster initially then dies) > .02 -- massive effects for .02
+					"Layer.Act.NMDA.Tau":       "100",  // 100 def
+					"Layer.Act.GABAB.Gbar":     "0.2",  // .1 == .2 pretty much
+					"Layer.Act.GABAB.Gbase":    "0.2",  // .1 == .2
+					"Layer.Act.GABAB.DecayTau": "50",   // 50 def
+					"Layer.Act.GABAB.RiseTau":  "45",   // 45 def
 					// "Layer.Act.GABAB.GiSpike":   "10",   // 10 -- no diff 8,12 > 8 > 15
 					"Layer.Act.Spike.Exp":       "true",
 					"Layer.Learn.ActAvg.SpikeG": "8",    // 8 for sure..
@@ -116,7 +119,8 @@ var ParamSets = params.Sets{
 				}},
 			{Sel: ".Forward", Desc: "special forward-only params: com prob",
 				Params: params.Params{
-					"Prjn.Com.PFail": "0.0", // 0.5 fails badly!
+					"Prjn.Com.PFail":      "0.0",
+					"Prjn.Com.PFailWtMax": "0.8", // 0.8 default
 				}},
 			{Sel: "#V1", Desc: "pool inhib (not used), initial activity",
 				Params: params.Params{
@@ -137,9 +141,17 @@ var ParamSets = params.Sets{
 				}},
 			{Sel: "#Output", Desc: "high inhib for one-hot output",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "1.5", // 1.5 >= 1.4 >= 1.3 > 1.2
+					"Layer.Inhib.Layer.Gi":    "1.5", // 1.6 > 1.5 >= 1.4 >= 1.3 > 1.2
 					"Layer.Inhib.ActAvg.Init": "0.05",
 					"Layer.Act.Init.Decay":    "1.0",
+					"Layer.Act.Clamp.Rate":    "180",  // 180 best here too
+					"Layer.Act.GABAB.Gbar":    "0.01", // .01 > .02 > .05 > .1 > .2
+					"Layer.Act.GABAB.GiSpike": "10",
+					"Layer.Act.NMDA.Gbar":     "0.01", // .01 == .02 > .03
+				}},
+			{Sel: "#ITToOutput", Desc: "no random sampling here",
+				Params: params.Params{
+					"Prjn.Com.PFail": "0.0",
 				}},
 		},
 	}},
@@ -176,6 +188,7 @@ type Sim struct {
 	ParamSet      string          `desc:"which set of *additional* parameters to use -- always applies Base and optionaly this next if set -- can use multiple names separated by spaces (don't put spaces in ParamSet names!)"`
 	Tag           string          `desc:"extra tag string to add to any file names output from sim (e.g., weights files, log files, params for run)"`
 	V1V4Prjn      *prjn.PoolTile  `view:"projection from V1 to V4 which is tiled 4x4 skip 2 with topo scale values"`
+	StartRun      int             `desc:"starting run number -- typically 0 but can be set in command args for parallel runs on a cluster"`
 	MaxRuns       int             `desc:"maximum number of model runs to perform"`
 	MaxEpcs       int             `desc:"maximum number of epochs to run per model run"`
 	MaxTrls       int             `desc:"maximum number of training trials per epoch"`
@@ -225,7 +238,7 @@ type Sim struct {
 	IsRunning    bool                          `view:"-" desc:"true if sim is running"`
 	StopNow      bool                          `view:"-" desc:"flag to stop running"`
 	NeedsNewRun  bool                          `view:"-" desc:"flag to initialize NewRun if last one finished"`
-	RndSeed      int64                         `view:"-" desc:"the current random seed"`
+	RndSeeds     []int64                       `view:"-" desc:"a list of random seeds to use for each run"`
 	LastEpcTime  time.Time                     `view:"-" desc:"timer for last epoch"`
 }
 
@@ -254,11 +267,14 @@ func (ss *Sim) New() {
 	// weights are systematicaly smaller.
 	// ss.V1V4Prjn.GaussFull.DefNoWrap()
 	// ss.V1V4Prjn.GaussInPool.DefNoWrap()
-	ss.RndSeed = 1
+	ss.RndSeeds = make([]int64, 100) // make enough for plenty of runs
+	for i := 0; i < 100; i++ {
+		ss.RndSeeds[i] = int64(i) + 1 // exclude 0
+	}
 	ss.ViewOn = true
 	ss.TrainUpdt = axon.Quarter
 	ss.TestUpdt = axon.Quarter
-	ss.LayStatNms = []string{"V1", "Output"}
+	ss.LayStatNms = []string{"V4", "IT", "Output"}
 	ss.ActRFNms = []string{"V4:Image", "V4:Output", "IT:Image", "IT:Output"}
 	ss.PNovel = 0
 }
@@ -367,17 +383,27 @@ func (ss *Sim) InitWts(net *axon.Network) {
 // Init restarts the run, and initializes everything, including network weights
 // and resets the epoch log table
 func (ss *Sim) Init() {
-	rand.Seed(ss.RndSeed)
+	ss.InitRndSeed()
+	ss.TrainEnv.Run.Max = ss.MaxRuns
 	ss.StopNow = false
 	ss.SetParams("", false) // all sheets
 	ss.NewRun()
 	ss.UpdateView(true)
 }
 
-// NewRndSeed gets a new random seed based on current time -- otherwise uses
-// the same random seed for every run
+// InitRndSeed initializes the random seed based on current training run number
+func (ss *Sim) InitRndSeed() {
+	run := ss.TrainEnv.Run.Cur
+	rand.Seed(ss.RndSeeds[run])
+}
+
+// NewRndSeed gets a new set of random seeds based on current time -- otherwise uses
+// the same random seeds for every run
 func (ss *Sim) NewRndSeed() {
-	ss.RndSeed = time.Now().UnixNano()
+	rs := time.Now().UnixNano()
+	for i := 0; i < 100; i++ {
+		ss.RndSeeds[i] = rs + int64(i)
+	}
 }
 
 // Counters returns a string of the current counter state
@@ -542,6 +568,7 @@ func (ss *Sim) RunEnd() {
 // NewRun intializes a new run of the model, using the TrainEnv.Run counter
 // for the new run value
 func (ss *Sim) NewRun() {
+	ss.InitRndSeed()
 	run := ss.TrainEnv.Run.Cur
 	ss.TrainEnv.Init(run)
 	ss.TestEnv.Init(run)
@@ -881,11 +908,15 @@ func (ss *Sim) ValsTsr(name string) *etensor.Float32 {
 // RunName returns a name for this run that combines Tag and Params -- add this to
 // any file names that are saved.
 func (ss *Sim) RunName() string {
+	rn := ""
 	if ss.Tag != "" {
-		return ss.Tag + "_" + ss.ParamsName()
-	} else {
-		return ss.ParamsName()
+		rn += ss.Tag + "_"
 	}
+	rn += ss.ParamsName()
+	if ss.StartRun > 0 {
+		rn += fmt.Sprintf("_%03d", ss.StartRun)
+	}
+	return rn
 }
 
 // RunEpochName returns a string with the run and epoch numbers with leading zeros, suitable
@@ -906,6 +937,26 @@ func (ss *Sim) LogFileName(lognm string) string {
 
 //////////////////////////////////////////////
 //  TrnEpcLog
+
+// HogDead computes the proportion of units in given layer name with ActAvg over hog thr
+// and under dead threshold.  Also reports max Gnmda and GgabaB
+func (ss *Sim) HogDead(lnm string) (hog, dead, gnmda, ggabab float64) {
+	ly := ss.Net.LayerByName(lnm).(axon.AxonLayer).AsAxon()
+	n := len(ly.Neurons)
+	for ni := range ly.Neurons {
+		nrn := &ly.Neurons[ni]
+		if nrn.ActAvg > 0.3 {
+			hog += 1
+		} else if nrn.ActAvg < 0.01 {
+			dead += 1
+		}
+		gnmda = math.Max(gnmda, float64(nrn.Gnmda))
+		ggabab = math.Max(ggabab, float64(nrn.GgabaB))
+	}
+	hog /= float64(n)
+	dead /= float64(n)
+	return
+}
 
 // LogTrnEpc adds data from current epoch to the TrnEpcLog table.
 // computes epoch averages prior to logging.
@@ -951,12 +1002,17 @@ func (ss *Sim) LogTrnEpc(dt *etable.Table) {
 	for _, lnm := range ss.LayStatNms {
 		ly := ss.Net.LayerByName(lnm).(axon.AxonLayer).AsAxon()
 		dt.SetCellFloat(ly.Nm+" ActAvg", row, float64(ly.Pools[0].ActAvg.ActPAvgEff))
+		hog, dead, gnmda, ggabab := ss.HogDead(lnm)
+		dt.SetCellFloat(ly.Nm+" Hog", row, hog)
+		dt.SetCellFloat(ly.Nm+" Dead", row, dead)
+		dt.SetCellFloat(ly.Nm+" Gnmda", row, gnmda)
+		dt.SetCellFloat(ly.Nm+" GgabaB", row, ggabab)
 	}
 
 	// note: essential to use Go version of update when called from another goroutine
 	ss.TrnEpcPlot.GoUpdate()
 	if ss.TrnEpcFile != nil {
-		if ss.TrainEnv.Run.Cur == 0 && epc == 0 {
+		if ss.TrainEnv.Run.Cur == ss.StartRun && epc == 0 {
 			dt.WriteCSVHeaders(ss.TrnEpcFile, etable.Tab)
 		}
 		dt.WriteCSVRow(ss.TrnEpcFile, row, etable.Tab)
@@ -980,6 +1036,10 @@ func (ss *Sim) ConfigTrnEpcLog(dt *etable.Table) {
 	}
 	for _, lnm := range ss.LayStatNms {
 		sch = append(sch, etable.Column{lnm + " ActAvg", etensor.FLOAT64, nil, nil})
+		sch = append(sch, etable.Column{lnm + " Hog", etensor.FLOAT64, nil, nil})
+		sch = append(sch, etable.Column{lnm + " Dead", etensor.FLOAT64, nil, nil})
+		sch = append(sch, etable.Column{lnm + " Gnmda", etensor.FLOAT64, nil, nil})
+		sch = append(sch, etable.Column{lnm + " GgabaB", etensor.FLOAT64, nil, nil})
 	}
 	dt.SetFromSchema(sch, 0)
 }
@@ -999,6 +1059,10 @@ func (ss *Sim) ConfigTrnEpcPlot(plt *eplot.Plot2D, dt *etable.Table) *eplot.Plot
 
 	for _, lnm := range ss.LayStatNms {
 		plt.SetColParams(lnm+" ActAvg", eplot.Off, eplot.FixMin, 0, eplot.FixMax, 0.5)
+		plt.SetColParams(lnm+" Hog", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
+		plt.SetColParams(lnm+" Dead", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
+		plt.SetColParams(lnm+" Gnmda", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
+		plt.SetColParams(lnm+" GgabaB", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 	}
 	return plt
 }
@@ -1512,6 +1576,7 @@ func (ss *Sim) CmdArgs() {
 	flag.StringVar(&ss.ParamSet, "params", "", "ParamSet name to use -- must be valid name as listed in compiled-in params or loaded params")
 	flag.StringVar(&ss.Tag, "tag", "", "extra tag to add to file names saved from this run")
 	flag.StringVar(&note, "note", "", "user note -- describe the run params etc")
+	flag.IntVar(&ss.StartRun, "run", 0, "starting run number -- determines the random seed -- runs counts from there -- can do all runs in parallel by launching separate jobs with each run, runs = 1")
 	flag.IntVar(&ss.MaxRuns, "runs", 1, "number of runs to do (note that MaxEpcs is in paramset)")
 	flag.IntVar(&ss.MaxEpcs, "epcs", 100, "number of epochs per run")
 	flag.BoolVar(&ss.LogSetParams, "setparams", false, "if true, print a record of each parameter that is set")
@@ -1556,6 +1621,9 @@ func (ss *Sim) CmdArgs() {
 	if ss.SaveWts {
 		fmt.Printf("Saving final weights per run\n")
 	}
-	fmt.Printf("Running %d Runs\n", ss.MaxRuns)
+	fmt.Printf("Running Runs: %d - %d\n", ss.StartRun, ss.MaxRuns)
+	ss.TrainEnv.Run.Set(ss.StartRun)
+	ss.TrainEnv.Run.Max = ss.MaxRuns
+	ss.NewRun()
 	ss.Train()
 }
