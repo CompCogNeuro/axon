@@ -141,13 +141,13 @@ var ParamSets = params.Sets{
 				}},
 			{Sel: "#Output", Desc: "high inhib for one-hot output",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "1.5", // 1.6 > 1.5 >= 1.4 >= 1.3 > 1.2
+					"Layer.Inhib.Layer.Gi":    "1.5", // 1.5 > 1.4..
 					"Layer.Inhib.ActAvg.Init": "0.05",
 					"Layer.Act.Init.Decay":    "1.0",
-					"Layer.Act.Clamp.Rate":    "180",  // 180 best here too
-					"Layer.Act.GABAB.Gbar":    "0.01", // .01 > .02 > .05 > .1 > .2
+					"Layer.Act.Clamp.Rate":    "180",   // 180 best here too
+					"Layer.Act.GABAB.Gbar":    "0.002", // .005 > .01 > .02 > .05 > .1 > .2
 					"Layer.Act.GABAB.GiSpike": "10",
-					"Layer.Act.NMDA.Gbar":     "0.01", // .01 == .02 > .03
+					"Layer.Act.NMDA.Gbar":     "0.02", // .02 > .01?  > .03
 				}},
 			{Sel: "#ITToOutput", Desc: "no random sampling here",
 				Params: params.Params{
