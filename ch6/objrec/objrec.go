@@ -132,12 +132,15 @@ var ParamSets = params.Sets{
 					"Layer.Inhib.Layer.Gi":    "1.0",  // 1.0 == 0.9 == 0.8 > 0.7
 					"Layer.Inhib.Pool.Gi":     "1.0",  // 1.0 == 0.9 > 0.8..
 					"Layer.Inhib.Pool.On":     "true", // needs pool-level
-					"Layer.Inhib.ActAvg.Init": "0.05", // sparse
+					"Layer.Inhib.ActAvg.Init": "0.05",
+					"Layer.Inhib.Adapt.On":    "false", // no advantage, no cost at .05
 				}},
 			{Sel: "#IT", Desc: "initial activity",
 				Params: params.Params{
-					"Layer.Inhib.Layer.Gi":    "1.1", // 1.1 > 1.0, 1.2 (1.2 pretty close)
-					"Layer.Inhib.ActAvg.Init": "0.1",
+					"Layer.Inhib.Layer.Gi":    "1.1",  // 1.1 > 1.0, 1.2
+					"Layer.Inhib.ActAvg.Init": "0.05", // .05 > .04 with adapt
+					"Layer.Inhib.Adapt.On":    "true",
+					"Layer.Act.GABAB.Gbar":    "0.2", // .2 > lower (small dif)
 				}},
 			{Sel: "#Output", Desc: "high inhib for one-hot output",
 				Params: params.Params{
@@ -145,9 +148,9 @@ var ParamSets = params.Sets{
 					"Layer.Inhib.ActAvg.Init": "0.05",
 					"Layer.Act.Init.Decay":    "1.0",
 					"Layer.Act.Clamp.Rate":    "180",   // 180 best here too
-					"Layer.Act.GABAB.Gbar":    "0.002", // .005 > .01 > .02 > .05 > .1 > .2
+					"Layer.Act.GABAB.Gbar":    "0.005", // .005 > .01 > .02 > .05 > .1 > .2
 					"Layer.Act.GABAB.GiSpike": "10",
-					"Layer.Act.NMDA.Gbar":     "0.02", // .02 > .01?  > .03
+					"Layer.Act.NMDA.Gbar":     "0.03", // .03 > .02 > .01
 				}},
 			{Sel: "#ITToOutput", Desc: "no random sampling here",
 				Params: params.Params{
@@ -1002,6 +1005,7 @@ func (ss *Sim) LogTrnEpc(dt *etable.Table) {
 	for _, lnm := range ss.LayStatNms {
 		ly := ss.Net.LayerByName(lnm).(axon.AxonLayer).AsAxon()
 		dt.SetCellFloat(ly.Nm+" ActAvg", row, float64(ly.Pools[0].ActAvg.ActPAvgEff))
+		dt.SetCellFloat(ly.Nm+" GiMult", row, float64(ly.GiMult))
 		hog, dead, gnmda, ggabab := ss.HogDead(lnm)
 		dt.SetCellFloat(ly.Nm+" Hog", row, hog)
 		dt.SetCellFloat(ly.Nm+" Dead", row, dead)
@@ -1036,6 +1040,7 @@ func (ss *Sim) ConfigTrnEpcLog(dt *etable.Table) {
 	}
 	for _, lnm := range ss.LayStatNms {
 		sch = append(sch, etable.Column{lnm + " ActAvg", etensor.FLOAT64, nil, nil})
+		sch = append(sch, etable.Column{lnm + " GiMult", etensor.FLOAT64, nil, nil})
 		sch = append(sch, etable.Column{lnm + " Hog", etensor.FLOAT64, nil, nil})
 		sch = append(sch, etable.Column{lnm + " Dead", etensor.FLOAT64, nil, nil})
 		sch = append(sch, etable.Column{lnm + " Gnmda", etensor.FLOAT64, nil, nil})
@@ -1059,6 +1064,7 @@ func (ss *Sim) ConfigTrnEpcPlot(plt *eplot.Plot2D, dt *etable.Table) *eplot.Plot
 
 	for _, lnm := range ss.LayStatNms {
 		plt.SetColParams(lnm+" ActAvg", eplot.Off, eplot.FixMin, 0, eplot.FixMax, 0.5)
+		plt.SetColParams(lnm+" GiMult", eplot.Off, eplot.FixMin, 0, eplot.FixMax, 0.5)
 		plt.SetColParams(lnm+" Hog", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 		plt.SetColParams(lnm+" Dead", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 		plt.SetColParams(lnm+" Gnmda", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
@@ -1582,7 +1588,7 @@ func (ss *Sim) CmdArgs() {
 	flag.BoolVar(&ss.LogSetParams, "setparams", false, "if true, print a record of each parameter that is set")
 	flag.BoolVar(&ss.SaveWts, "wts", false, "if true, save final weights after each run")
 	flag.BoolVar(&saveEpcLog, "epclog", true, "if true, save train epoch log to file")
-	flag.BoolVar(&saveRunLog, "runlog", true, "if true, save run epoch log to file")
+	flag.BoolVar(&saveRunLog, "runlog", false, "if true, save run epoch log to file")
 	flag.BoolVar(&nogui, "nogui", true, "if not passing any other args and want to run nogui, use nogui")
 	flag.Parse()
 	ss.Init()

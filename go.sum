@@ -60,8 +60,8 @@ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/dlclark/regexp2 v1.2.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55kozfMjCc=
 github.com/dlclark/regexp2 v1.4.0 h1:F1rxgk7p4uKjwIQxBs9oAXe5CqrXlCduYEJvrF4u93E=
 github.com/dlclark/regexp2 v1.4.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55kozfMjCc=
-github.com/emer/axon v1.2.7 h1:QWqfra0qs+L2rAujHNxF/ECIku7d1h1SmKWk3o8ToQ8=
-github.com/emer/axon v1.2.7/go.mod h1:tTfPX7UXd27guqefzXlyH9UklpepL+yAycuVvSnn9PM=
+github.com/emer/axon v1.2.10 h1:31pW4NLKL1c+qAwKItF/3i/lQ0X7n42WcVzshiIjlVM=
+github.com/emer/axon v1.2.10/go.mod h1:tTfPX7UXd27guqefzXlyH9UklpepL+yAycuVvSnn9PM=
 github.com/emer/emergent v1.1.13/go.mod h1:VUAhHTyRN7nhaOVAKnYQ8YHr1J7Ha+MhMCQOG+Ttdec=
 github.com/emer/emergent v1.1.18/go.mod h1:8Li1MCGB0cgF+Q1yaN1p7ktKaiCQQNxweRPNVBfhdCw=
 github.com/emer/emergent v1.1.22/go.mod h1:NrHvFYI3v/cbjogC7HsY62nN37GZmLzwfVkrMVt5IqQ=
