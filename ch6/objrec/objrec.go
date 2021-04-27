@@ -77,10 +77,16 @@ var ParamSets = params.Sets{
 		"Network": &params.Sheet{
 			{Sel: "Prjn", Desc: "yes extra learning factors",
 				Params: params.Params{
-					"Prjn.Learn.Norm.On":     "false", // retest: off > on actually -- dies in the end maybe..
-					"Prjn.Learn.Momentum.On": "false",
-					"Prjn.Learn.WtBal.On":    "true", // if mom, then need wtbal!
-					"Prjn.Learn.Lrate":       "0.04", // must set initial lrate here when using schedule!
+					"Prjn.Learn.WtBal.On":     "true",  // if mom, then need wtbal!
+					"Prjn.Learn.WtBal.Targs":  "false", // true == false
+					"Prjn.Learn.WtBal.HiGain": "4",     // 4 def
+					"Prjn.Learn.WtBal.LoGain": "6",     // 6 def
+					"Prjn.Learn.WtSig.Gain":   "6",
+					"Prjn.Learn.Lrate":        "0.04", // gain 1, lr .35 or .4 pretty close to 6/.04
+					"Prjn.Learn.XCal.SetLLrn": "true",
+					"Prjn.Learn.XCal.LLrn":    "0", // no real diff actually
+					"Prjn.Com.PFail":          "0.0",
+					"Prjn.Com.PFailWtMax":     "0.0", // 0.8 default
 					// "Prjn.WtInit.Sym":        "false", // slows first couple of epochs but then no diff
 				}},
 			{Sel: "Layer", Desc: "needs some special inhibition and learning params",
@@ -89,23 +95,23 @@ var ParamSets = params.Sets{
 					"Layer.Inhib.Layer.FBTau":  "1.4", // 1.4 def
 					"Layer.Inhib.Pool.FBTau":   "1.4",
 					"Layer.Act.Init.Decay":     "0.5",  // 0.5 > 0.8 > 1 > 0 -- 1, 0.8 start fast then dies, 0 never learns -- very sensitive
-					"Layer.Act.Gbar.L":         "0.2",  // .2 > .1 -- .1 starts out better then loses
+					"Layer.Act.Gbar.L":         "0.2",  // .2 > .1 @176
 					"Layer.Act.Gbar.E":         "1.0",  // 1.2 maybe better % cor but not cosdiff
-					"Layer.Act.NMDA.Gbar":      "0.03", // 0.03 > .04 (faster initially then dies) > .02 -- massive effects for .02
+					"Layer.Act.NMDA.Gbar":      "0.03", // 0.03 > .04 @176 > .02 -- massive effects for .02
 					"Layer.Act.NMDA.Tau":       "100",  // 100 def
 					"Layer.Act.GABAB.Gbar":     "0.2",  // .1 == .2 pretty much
 					"Layer.Act.GABAB.Gbase":    "0.2",  // .1 == .2
 					"Layer.Act.GABAB.DecayTau": "50",   // 50 def
 					"Layer.Act.GABAB.RiseTau":  "45",   // 45 def
 					// "Layer.Act.GABAB.GiSpike":   "10",   // 10 -- no diff 8,12 > 8 > 15
-					"Layer.Act.Spike.Exp":       "true",
+					"Layer.Act.Spike.Exp":       "true", // true > false @176
 					"Layer.Learn.ActAvg.SpikeG": "8",    // 8 for sure..
 					"Layer.Learn.ActAvg.SSTau":  "40",   // 40 > 35 def > 30
 					"Layer.Learn.ActAvg.STau":   "10",   // 10 >= 8 def (10 better early) > 6
 					"Layer.Learn.ActAvg.MTau":   "40",   // for 50 cyc qtr: SS = 40, 50, 45 faster then die
-					"Layer.Act.Dt.GeTau":        "5",    // 5 > 7 initially faster then dies
+					"Layer.Act.Dt.GeTau":        "5",    // 5 = 4 (bit slower) > 6 > 7 @176
 					"Layer.Act.Dt.MTau":         "20",   // for 50 cyc qtr, 20 -- no maj diffs +-5 > 10
-					"Layer.Act.KNa.On":          "true", // on > off -- off starts faster then loses badly
+					"Layer.Act.KNa.On":          "true", // true > false @176
 					"Layer.Act.Noise.Dist":      "Gaussian",
 					"Layer.Act.Noise.Var":       "0.0",     // 0.01 > 0.005 > 0.02
 					"Layer.Act.Noise.Type":      "NoNoise", // no diff -- maybe tiny bit better
@@ -115,13 +121,13 @@ var ParamSets = params.Sets{
 				}},
 			{Sel: ".Back", Desc: "top-down back-projections MUST have lower relative weight scale, otherwise network hallucinates -- smaller as network gets bigger",
 				Params: params.Params{
-					"Prjn.WtScale.Rel": "0.1",
+					"Prjn.WtScale.Rel": "0.2", // .2 > .15 > .1 > .05 @176
 				}},
-			{Sel: ".Forward", Desc: "special forward-only params: com prob",
-				Params: params.Params{
-					"Prjn.Com.PFail":      "0.0",
-					"Prjn.Com.PFailWtMax": "0.8", // 0.8 default
-				}},
+			// {Sel: ".Forward", Desc: "special forward-only params: com prob",
+			// 	Params: params.Params{
+			// 		"Prjn.Com.PFail":      "0.0",
+			// 		"Prjn.Com.PFailWtMax": "0.8", // 0.8 default
+			// 	}},
 			{Sel: "#V1", Desc: "pool inhib (not used), initial activity",
 				Params: params.Params{
 					"Layer.Inhib.Pool.On":     "true", // clamped, so not relevant, but just in case
