@@ -95,6 +95,7 @@ var ParamSets = params.Sets{
 					"Layer.Inhib.Layer.FBTau":  "1.4", // 1.4 def
 					"Layer.Inhib.Pool.FBTau":   "1.4",
 					"Layer.Act.Init.Decay":     "0.5",  // 0.5 > 0.8 > 1 > 0 -- 1, 0.8 start fast then dies, 0 never learns -- very sensitive
+					"Layer.Act.Init.KnaDecay":  "0.0",  // 0 > 0.5 interesting..
 					"Layer.Act.Gbar.L":         "0.2",  // .2 > .1 @176
 					"Layer.Act.Gbar.E":         "1.0",  // 1.2 maybe better % cor but not cosdiff
 					"Layer.Act.NMDA.Gbar":      "0.03", // 0.03 > .04 @176 > .02 -- massive effects for .02
@@ -113,7 +114,8 @@ var ParamSets = params.Sets{
 					"Layer.Act.Dt.MTau":         "20",   // for 50 cyc qtr, 20 -- no maj diffs +-5 > 10
 					"Layer.Act.KNa.On":          "true", // true > false @176
 					"Layer.Act.Noise.Dist":      "Gaussian",
-					"Layer.Act.Noise.Var":       "0.0",     // 0.01 > 0.005 > 0.02
+					"Layer.Act.Noise.Mean":      "0.0",
+					"Layer.Act.Noise.Var":       "0.01",    // 0.01 > 0.005 > 0.02
 					"Layer.Act.Noise.Type":      "NoNoise", // no diff -- maybe tiny bit better
 					"Layer.Act.Clamp.Rate":      "180",     // 180 == 200 > 150 > 120 > 100 -- major effect on 100, 120
 					"Layer.Act.Clamp.ErrThr":    "0.5",     // 0.5 best
@@ -123,11 +125,10 @@ var ParamSets = params.Sets{
 				Params: params.Params{
 					"Prjn.WtScale.Rel": "0.2", // .2 > .15 > .1 > .05 @176
 				}},
-			// {Sel: ".Forward", Desc: "special forward-only params: com prob",
-			// 	Params: params.Params{
-			// 		"Prjn.Com.PFail":      "0.0",
-			// 		"Prjn.Com.PFailWtMax": "0.8", // 0.8 default
-			// 	}},
+			{Sel: ".Forward", Desc: "special forward-only params: com prob",
+				Params: params.Params{
+					"Prjn.WtScale.Abs": "1.0",
+				}},
 			{Sel: "#V1", Desc: "pool inhib (not used), initial activity",
 				Params: params.Params{
 					"Layer.Inhib.Pool.On":     "true", // clamped, so not relevant, but just in case
@@ -152,7 +153,8 @@ var ParamSets = params.Sets{
 				Params: params.Params{
 					"Layer.Inhib.Layer.Gi":    "1.5", // 1.5 > 1.4..
 					"Layer.Inhib.ActAvg.Init": "0.05",
-					"Layer.Act.Init.Decay":    "1.0",
+					"Layer.Act.Gbar.E":        "1.0",
+					"Layer.Act.Init.Decay":    "1.0",   // 1 > .5 even with decay fixed
 					"Layer.Act.Clamp.Rate":    "180",   // 180 best here too
 					"Layer.Act.GABAB.Gbar":    "0.005", // .005 > .01 > .02 > .05 > .1 > .2
 					"Layer.Act.GABAB.GiSpike": "10",
@@ -1010,6 +1012,7 @@ func (ss *Sim) LogTrnEpc(dt *etable.Table) {
 
 	for _, lnm := range ss.LayStatNms {
 		ly := ss.Net.LayerByName(lnm).(axon.AxonLayer).AsAxon()
+		dt.SetCellFloat(ly.Nm+" MaxGeM", row, float64(ly.Pools[0].GeM.Max))
 		dt.SetCellFloat(ly.Nm+" ActAvg", row, float64(ly.Pools[0].ActAvg.ActPAvgEff))
 		dt.SetCellFloat(ly.Nm+" GiMult", row, float64(ly.GiMult))
 		hog, dead, gnmda, ggabab := ss.HogDead(lnm)
@@ -1045,6 +1048,7 @@ func (ss *Sim) ConfigTrnEpcLog(dt *etable.Table) {
 		{"PerTrlMSec", etensor.FLOAT64, nil, nil},
 	}
 	for _, lnm := range ss.LayStatNms {
+		sch = append(sch, etable.Column{lnm + " MaxGeM", etensor.FLOAT64, nil, nil})
 		sch = append(sch, etable.Column{lnm + " ActAvg", etensor.FLOAT64, nil, nil})
 		sch = append(sch, etable.Column{lnm + " GiMult", etensor.FLOAT64, nil, nil})
 		sch = append(sch, etable.Column{lnm + " Hog", etensor.FLOAT64, nil, nil})
@@ -1069,8 +1073,9 @@ func (ss *Sim) ConfigTrnEpcPlot(plt *eplot.Plot2D, dt *etable.Table) *eplot.Plot
 	plt.SetColParams("PerTrlMSec", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 0)
 
 	for _, lnm := range ss.LayStatNms {
+		plt.SetColParams(lnm+" GeM", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 		plt.SetColParams(lnm+" ActAvg", eplot.Off, eplot.FixMin, 0, eplot.FixMax, 0.5)
-		plt.SetColParams(lnm+" GiMult", eplot.Off, eplot.FixMin, 0, eplot.FixMax, 0.5)
+		plt.SetColParams(lnm+" GiMult", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 		plt.SetColParams(lnm+" Hog", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 		plt.SetColParams(lnm+" Dead", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
 		plt.SetColParams(lnm+" Gnmda", eplot.Off, eplot.FixMin, 0, eplot.FloatMax, 1)
